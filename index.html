@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foto di Guerrino Vitali</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="header">
+        <h1>📸 Foto di Guerrino Vitali</h1>
+        <div class="stats">
+            <span id="total-photos">0</span> foto •
+            <span id="gps-photos">0</span> geolocalizzate
+        </div>
+        <div class="copyright">Copyright © Gipsoteca Vitali di Cento - Licenza CC-BY-SA</div>
+    </div>
+
+    <div class="controls">
+        <div class="map-selector">
+            <label>Mappa:</label>
+            <button class="map-btn active" data-map="osm">OpenStreetMap</button>
+        </div>
+        <div class="view-selector">
+            <button class="view-btn" data-view="gallery">📷 Galleria</button>
+            <button class="view-btn active" data-view="map">🗺️ Mappa</button>
+        </div>
+    </div>
+
+    <div class="container" id="view-container">
+        <div class="gallery-view" id="gallery-view">
+            <div class="photo-grid" id="photo-grid">
+                <div class="loading">Caricamento...</div>
+            </div>
+        </div>
+
+        <div class="map-view active" id="map-view">
+            <div id="map"></div>
+        </div>
+
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox">
+        <div class="lightbox-content">
+            <button class="lightbox-close" onclick="closeLightbox()">×</button>
+
+            <div class="lightbox-main">
+                <div class="lightbox-image-container">
+                    <img id="lightbox-image" src="" alt="">
+                </div>
+                <div class="lightbox-map-container" id="lightbox-map-container">
+                    <button class="map-toggle-btn" id="map-toggle-btn" title="Toggle Map">🗺️</button>
+                    <div id="lightbox-map"></div>
+                </div>
+                <div id="zone-notification" class="zone-notification"></div>
+            </div>
+
+            <div class="lightbox-info">
+                <h3 id="lightbox-title"></h3>
+                <div class="lightbox-meta">
+                    <span id="lightbox-date"></span>
+                    <span id="lightbox-camera"></span>
+                    <span id="lightbox-gps"></span>
+                    <span id="lightbox-direction"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
