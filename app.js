@@ -264,7 +264,12 @@ newImg.onload = function () {
 if (currentLightboxIndex === photosData.indexOf(photo)) {
 imgElement.src = photo.display;
 loader.classList.remove('active');
+// Force browser to acknowledge opacity: 0 before switching to 1
+requestAnimationFrame(() => {
+requestAnimationFrame(() => {
 imgElement.style.opacity = '1';
+});
+});
 }
 };
 newImg.src = photo.display;
