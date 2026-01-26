@@ -426,41 +426,171 @@ if (e.key === 'ArrowRight') navigateLightbox(1);
 if (e.key === 'm') toggleMap(); // Shortcut for map
 }
 });
-// Mobile Swipe Support
-let touchStartX = 0;
-let touchEndX = 0;
-let isZooming = false;
-const lightbox = document.getElementById('lightbox');
-lightbox.addEventListener('touchstart', (e) => {
-if (e.touches.length > 1) {
-isZooming = true;
-return;
+// Mobile Zoom & Swipe Support
+const imageContainer = document.querySelector('.lightbox-image-container');
+const imgElement = document.getElementById('lightbox-image');
+// Zoom State
+let scale = 1;
+let pointX = 0;
+let pointY = 0;
+let startX = 0;
+let startY = 0;
+let isDragging = false;
+let startDist = 0;
+// Swipe Navigation State
+let swipeStartX = 0;
+let swipeStartY = 0;
+// Prevent default touch behavior to stop scrolling/zooming the whole page
+imageContainer.addEventListener('gesturestart', (e) => e.preventDefault());
+imageContainer.addEventListener('gesturechange', (e) => e.preventDefault());
+imageContainer.addEventListener('gestureend', (e) => e.preventDefault());
+imageContainer.addEventListener('touchstart', (e) => {
+if (e.touches.length === 2) {
+// Pinch to Zoom handling
+e.preventDefault(); // Prevent page zoom
+startDist = Math.hypot(
+e.touches[0].pageX - e.touches[1].pageX,
+e.touches[0].pageY - e.touches[1].pageY
+);
+} else if (e.touches.length === 1) {
+// Single finger touch - could be pan (if zoomed) or swipe (if not)
+startX = e.touches[0].pageX;
+startY = e.touches[0].pageY;
+swipeStartX = startX;
+swipeStartY = startY;
+isDragging = true;
 }
-isZooming = false;
-touchStartX = e.changedTouches[0].screenX;
-}, { passive: true });
-lightbox.addEventListener('touchend', (e) => {
-if (isZooming || e.touches.length > 0) return;
-touchEndX = e.changedTouches[0].screenX;
-handleSwipe();
-}, { passive: true });
-// Background click to close (optional but good UX), ensure not dragging
-lightbox.addEventListener('click', (e) => {
-if (e.target === lightbox) {
-closeLightbox();
+}, { passive: false }); // passive: false needed for preventDefault
+imageContainer.addEventListener('touchmove', (e) => {
+if (e.touches.length === 2) {
+// Pinching
+e.preventDefault();
+const dist = Math.hypot(
+e.touches[0].pageX - e.touches[1].pageX,
+e.touches[0].pageY - e.touches[1].pageY
+);
+if (startDist > 0) {
+const deltaScale = dist / startDist;
+// Limit scale change speed and range
+const newScale = Math.min(Math.max(scale * deltaScale, 0.5), 5); // Min 0.5x, Max 5x
+// Update scale but keep position relative for now (centered zoom)
+// Proper focal point zoom is complex, staying with center zoom for simplicity first
+scale = newScale;
+updateImageTransform();
+startDist = dist; // Reset start dist for continuous zoom
+}
+} else if (e.touches.length === 1 && isDragging) {
+// Panning or Swiping
+const x = e.touches[0].pageX;
+const y = e.touches[0].pageY;
+const deltaX = x - startX;
+const deltaY = y - startY;
+if (scale > 1.1) {
+// If zoomed in, Pan
+e.preventDefault();
+pointX += deltaX;
+pointY += deltaY;
+updateImageTransform();
+} else {
+// Check if it's a horizontal swipe for navigation
+// allow vertical scrolling of page if needed (though lightbox is fixed)
+if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+e.preventDefault(); // Lock scroll if horizontal swipe
+}
+}
+startX = x;
+startY = y;
+}
+}, { passive: false });
+imageContainer.addEventListener('touchend', (e) => {
+isDragging = false;
+if (e.touches.length === 0) {
+// All fingers off
+if (scale < 1) {
+// Reset if zoomed out too much
+resetZoom();
+} else if (scale > 1) {
+// Limit panning to boundaries if needed, or just let it be free
+// For now, no strict boundary checks
+} else {
+// Not zoomed (or barely), check for swipe navigation
+const deltaX = startX - swipeStartX;
+const deltaY = startY - swipeStartY;
+// Only swipe if horizontal move dominates and is long enough
+if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+if (deltaX < 0) navigateLightbox(1); // Next
+else navigateLightbox(-1); // Prev
+}
+}
 }
 });
-function handleSwipe() {
-// Threshold for swipe detection
-if (Math.abs(touchEndX - touchStartX) > 50) {
-if (touchEndX < touchStartX) {
-// Swipe Left -> Next
-navigateLightbox(1);
-}
-if (touchEndX > touchStartX) {
-// Swipe Right -> Previous
-navigateLightbox(-1);
-}
-}
+// MOUSE EVENTS FOR DESKTOP
+// Wheel to zoom
+imageContainer.addEventListener('wheel', (e) => {
+e.preventDefault();
+const delta = -Math.sign(e.deltaY) * 0.1;
+const newScale = Math.min(Math.max(scale + delta, 0.5), 5); // Min 0.5x, Max 5x
+scale = newScale;
+updateImageTransform();
+}, { passive: false });
+// Mouse Drag to Pan
+imageContainer.addEventListener('mousedown', (e) => {
+if (scale > 1) {
+isDragging = true;
+startX = e.clientX;
+startY = e.clientY;
+e.preventDefault(); // Prevent default drag behavior
 }
 });
+imageContainer.addEventListener('mousemove', (e) => {
+if (isDragging && scale > 1) {
+e.preventDefault();
+const deltaX = e.clientX - startX;
+const deltaY = e.clientY - startY;
+pointX += deltaX;
+pointY += deltaY;
+startX = e.clientX;
+startY = e.clientY;
+updateImageTransform();
+}
+});
+imageContainer.addEventListener('mouseup', () => {
+isDragging = false;
+});
+imageContainer.addEventListener('mouseleave', () => {
+isDragging = false;
+});
+// Helper to update transform
+function updateImageTransform() {
+// Calculate limit ranges
+// Image dimensions
+const imgWidth = imgElement.offsetWidth * scale;
+const imgHeight = imgElement.offsetHeight * scale;
+// Container dimensions
+const containerWidth = imageContainer.offsetWidth;
+const containerHeight = imageContainer.offsetHeight;
+// Calculate max offsets (from center)
+// If image is smaller than container effectively, max offset is 0 (keep centered)
+// If image is larger, max offset is (imgDim - containerDim) / 2
+const maxOffsetX = Math.max(0, (imgWidth - containerWidth) / 2);
+const maxOffsetY = Math.max(0, (imgHeight - containerHeight) / 2);
+// Clamp
+pointX = Math.max(-maxOffsetX, Math.min(pointX, maxOffsetX));
+pointY = Math.max(-maxOffsetY, Math.min(pointY, maxOffsetY));
+imgElement.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+}
+// Helper to reset zoom
+window.resetZoom = function () {
+scale = 1;
+pointX = 0;
+pointY = 0;
+imgElement.style.transform = '';
+}
+});
+// Reset zoom when opening/changing photo
+// Hook into existing functions by adding calls or overriding
+const originalUpdateLightboxContent = updateLightboxContent;
+updateLightboxContent = function (photo) {
+if (window.resetZoom) window.resetZoom();
+originalUpdateLightboxContent(photo);
+};
