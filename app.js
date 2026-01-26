@@ -239,32 +239,35 @@ console.log('Foto senza GPS, skip');
 return;
 }
 const lightbox = document.getElementById('lightbox');
-const imgElement = document.getElementById('lightbox-image');
-// Se la lightbox non è attiva, aprila direttamente
+// Se la lightbox non è attiva, aprila
 if (!lightbox.classList.contains('active')) {
-updateLightboxContent(photo);
 lightbox.classList.add('active');
-imgElement.classList.remove('fade-out'); // Assicurati che sia visibile
-} else {
-// Altrimenti, fai la transizione
-imgElement.classList.add('fade-out');
+}
 // Controlla cambia zona
 if (prevIndex >= 0) {
 const prevPhoto = photosData[prevIndex];
 checkZoneChange(prevPhoto, photo);
 }
-setTimeout(() => {
 updateLightboxContent(photo);
-// Piccolo delay per permettere il rendering del nuovo src prima del fade-in
-requestAnimationFrame(() => {
-imgElement.classList.remove('fade-out');
-});
-}, 300);
-}
 }
 function updateLightboxContent(photo) {
 const imgElement = document.getElementById('lightbox-image');
+const loader = document.getElementById('lightbox-loader');
+// Show loader and hide image immediately
+loader.classList.add('active');
+imgElement.style.opacity = '0';
+// Create a new image to preload
+const newImg = new Image();
+newImg.onload = function () {
+// Only update if we're still looking at the same photo
+// (handle fast navigation case)
+if (currentLightboxIndex === photosData.indexOf(photo)) {
 imgElement.src = photo.display;
+loader.classList.remove('active');
+imgElement.style.opacity = '1';
+}
+};
+newImg.src = photo.display;
 // Use filename as title
 const filename = photo.display.split('/').pop();
 document.getElementById('lightbox-title').textContent = filename;
