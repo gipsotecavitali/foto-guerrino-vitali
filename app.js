@@ -7,6 +7,7 @@ let mapLightbox = null;
 let markers = [];
 let markerClusterGroup = null;
 let currentLightboxIndex = -1;
+let lightboxModal = null; // Bootstrap Modal instance
 // Tile layers
 const tileLayers = {
 osm: {
@@ -48,29 +49,30 @@ const gpsPhotos = data.photos.filter(p => p.has_gps).length;
 document.getElementById('total-photos').textContent = gpsPhotos;
 document.getElementById('gps-photos').textContent = gpsPhotos;
 }
-// Renderizza galleria
+// Renderizza galleria con Bootstrap Cards
 function renderGallery() {
 const grid = document.getElementById('photo-grid');
 // Mostra solo foto con GPS
 const photosToShow = photosData.filter(p => p.has_gps);
 if (photosToShow.length === 0) {
-grid.innerHTML = '<div class="loading">Nessuna foto con GPS trovata</div>';
+grid.innerHTML = '<div class="col-12"><div class="alert alert-warning text-center">Nessuna foto con GPS trovata</div></div>';
 return;
 }
 const html = photosToShow.map((photo, index) => {
 const originalIndex = photosData.indexOf(photo);
-// Use filename (basename of display path)
 const filename = photo.display.split('/').pop();
 return `
-<div class="photo-card" onclick="openLightbox(${originalIndex})">
-<img src="${photo.thumb}" alt="${filename}" loading="lazy">
-<div class="photo-card-info">
-<div class="photo-card-name">${filename}</div>
-<div class="photo-card-meta">
-${photo.date ? `<span>📅 ${formatDate(photo.date)}</span>` : ''}
-<span class="gps-badge has-gps">📍 GPS</span>
+<div class="col">
+<div class="card photo-card shadow-sm h-100" onclick="openLightbox(${originalIndex})">
+<img src="${photo.thumb}" class="card-img-top" alt="${filename}" loading="lazy">
+<div class="card-body photo-card-body p-2">
+<h6 class="card-title photo-card-title mb-1" title="${filename}">${filename}</h6>
+<div class="photo-card-meta d-flex flex-wrap gap-1">
+${photo.date ? `<span class="badge bg-light text-dark"><i class="bi bi-calendar"></i> ${formatDate(photo.date)}</span>` : ''}
+<span class="badge bg-success"><i class="bi bi-geo-alt-fill"></i> GPS</span>
 ${photo.direction !== null && photo.direction !== undefined ?
-`<span>🧭 ${Math.round(photo.direction)}°</span>` : ''}
+`<span class="badge bg-info"><i class="bi bi-compass"></i> ${Math.round(photo.direction)}°</span>` : ''}
+</div>
 </div>
 </div>
 </div>
@@ -204,31 +206,30 @@ map.addLayer(markerClusterGroup);
 const bounds = L.latLngBounds(photosWithGPS.map(p => [p.lat, p.lon]));
 map.fitBounds(bounds, { padding: [50, 50] });
 }
-// Cambia vista
+// Cambia vista (Bootstrap compatible)
 function switchView(view) {
 currentView = view;
-document.querySelectorAll('.view-btn').forEach(btn => {
-btn.classList.toggle('active', btn.dataset.view === view);
-});
-document.querySelectorAll('.gallery-view, .map-view').forEach(v => {
-v.classList.remove('active');
-});
-document.getElementById(`${view}-view`).classList.add('active');
+// Hide both views
+document.getElementById('gallery-view').style.display = 'none';
+document.getElementById('map-view').style.display = 'none';
+// Show selected view
+if (view === 'gallery') {
+document.getElementById('gallery-view').style.display = 'block';
+} else {
+document.getElementById('map-view').style.display = 'block';
 // Ridimensiona mappa se necessario
 setTimeout(() => {
-if (view === 'map') map.invalidateSize();
+if (map) map.invalidateSize();
 }, 100);
+}
 }
 // Cambia tipo mappa
 function switchMapType(type) {
 currentMapType = type;
-document.querySelectorAll('.map-btn').forEach(btn => {
-btn.classList.toggle('active', btn.dataset.map === type);
-});
 updateMapTiles(map);
 if (mapLightbox) updateMapTiles(mapLightbox);
 }
-// Lightbox
+// Lightbox (Bootstrap Modal)
 function openLightbox(index) {
 const prevIndex = currentLightboxIndex;
 currentLightboxIndex = index;
@@ -238,11 +239,16 @@ if (!photo.has_gps) {
 console.log('Foto senza GPS, skip');
 return;
 }
-const lightbox = document.getElementById('lightbox');
-// Se la lightbox non è attiva, aprila
-if (!lightbox.classList.contains('active')) {
-lightbox.classList.add('active');
+// Initialize Bootstrap modal if not already
+if (!lightboxModal) {
+const lightboxElement = document.getElementById('lightbox');
+lightboxModal = new bootstrap.Modal(lightboxElement, {
+keyboard: true,
+backdrop: 'static'
+});
 }
+// Show modal
+lightboxModal.show();
 // Controlla cambia zona
 if (prevIndex >= 0) {
 const prevPhoto = photosData[prevIndex];
@@ -254,17 +260,14 @@ function updateLightboxContent(photo) {
 const imgElement = document.getElementById('lightbox-image');
 const loader = document.getElementById('lightbox-loader');
 // Show loader and hide image immediately
-loader.classList.add('active');
+loader.style.display = 'block';
 imgElement.style.opacity = '0';
 // Create a new image to preload
 const newImg = new Image();
 newImg.onload = function () {
-// Only update if we're still looking at the same photo
-// (handle fast navigation case)
 if (currentLightboxIndex === photosData.indexOf(photo)) {
 imgElement.src = photo.display;
-loader.classList.remove('active');
-// Force browser to acknowledge opacity: 0 before switching to 1
+loader.style.display = 'none';
 requestAnimationFrame(() => {
 requestAnimationFrame(() => {
 imgElement.style.opacity = '1';
@@ -276,17 +279,29 @@ newImg.src = photo.display;
 // Use filename as title
 const filename = photo.display.split('/').pop();
 document.getElementById('lightbox-title').textContent = filename;
+// Update metadata badges
 const dateEl = document.getElementById('lightbox-date');
-dateEl.textContent = photo.date ? '📅 ' + formatDate(photo.date) : '';
+if (photo.date) {
+dateEl.innerHTML = `<i class="bi bi-calendar"></i> ${formatDate(photo.date)}`;
+dateEl.style.display = '';
+} else {
+dateEl.style.display = 'none';
+}
 const cameraEl = document.getElementById('lightbox-camera');
-cameraEl.textContent = photo.camera ? '📷 ' + photo.camera : '';
+if (photo.camera) {
+cameraEl.innerHTML = `<i class="bi bi-camera"></i> ${photo.camera}`;
+cameraEl.style.display = '';
+} else {
+cameraEl.style.display = 'none';
+}
 const gpsEl = document.getElementById('lightbox-gps');
-gpsEl.textContent = `📍 ${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}`;
+gpsEl.innerHTML = `<i class="bi bi-geo-alt"></i> ${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}`;
 const directionEl = document.getElementById('lightbox-direction');
 if (photo.direction !== null && photo.direction !== undefined) {
-directionEl.textContent = `🧭 ${Math.round(photo.direction)}°`;
+directionEl.innerHTML = `<i class="bi bi-compass"></i> ${Math.round(photo.direction)}°`;
+directionEl.style.display = '';
 } else {
-directionEl.textContent = '';
+directionEl.style.display = 'none';
 }
 // Aggiorna mappa lightbox
 updateLightboxMap(photo);
@@ -299,12 +314,14 @@ showZoneNotification(`📍 Nuova Zona`);
 }
 }
 function showZoneNotification(text) {
-const el = document.getElementById('zone-notification');
-el.textContent = text;
-el.classList.add('show');
+const container = document.getElementById('zone-notification');
+const alert = container.querySelector('.alert');
+const textEl = document.getElementById('zone-text');
+textEl.textContent = text;
+alert.classList.remove('d-none');
 // Nascondi dopo 3 secondi
 setTimeout(() => {
-el.classList.remove('show');
+alert.classList.add('d-none');
 }, 3000);
 }
 function updateLightboxMap(photo) {
@@ -363,7 +380,9 @@ mapLightbox.setView([photo.lat, photo.lon], 18);
 }, 100);
 }
 function closeLightbox() {
-document.getElementById('lightbox').classList.remove('active');
+if (lightboxModal) {
+lightboxModal.hide();
+}
 if (map) {
 map.closePopup();
 }
@@ -389,13 +408,18 @@ openLightbox(nextIndex);
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
 loadPhotos();
-// View buttons
-document.querySelectorAll('.view-btn').forEach(btn => {
-btn.addEventListener('click', () => switchView(btn.dataset.view));
+// View buttons (Bootstrap radio buttons)
+document.getElementById('viewGallery').addEventListener('change', (e) => {
+if (e.target.checked) switchView('gallery');
 });
-// Map buttons
-document.querySelectorAll('.map-btn').forEach(btn => {
-btn.addEventListener('click', () => switchMapType(btn.dataset.map));
+document.getElementById('viewMap').addEventListener('change', (e) => {
+if (e.target.checked) switchView('map');
+});
+// Map type buttons
+document.querySelectorAll('input[name="mapType"]').forEach(btn => {
+btn.addEventListener('change', (e) => {
+if (e.target.checked) switchMapType(e.target.dataset.map);
+});
 });
 // Map toggle
 const mapContainer = document.getElementById('lightbox-map-container');
@@ -419,11 +443,13 @@ toggleMap(e);
 });
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
-if (document.getElementById('lightbox').classList.contains('active')) {
+const lightboxElement = document.getElementById('lightbox');
+const isLightboxOpen = lightboxElement.classList.contains('show');
+if (isLightboxOpen) {
 if (e.key === 'Escape') closeLightbox();
 if (e.key === 'ArrowLeft') navigateLightbox(-1);
 if (e.key === 'ArrowRight') navigateLightbox(1);
-if (e.key === 'm') toggleMap(); // Shortcut for map
+if (e.key === 'm' || e.key === 'M') toggleMap(); // Shortcut for map
 }
 });
 // Mobile Zoom & Swipe Support

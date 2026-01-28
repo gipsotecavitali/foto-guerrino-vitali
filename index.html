@@ -3,79 +3,152 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Foto di Guerrino Vitali</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <div class="header">
-        <h1>📸 Foto di Guerrino Vitali</h1>
-        <div class="stats">
-            <span id="total-photos">0</span> foto •
-            <span id="gps-photos">0</span> geolocalizzate
-        </div>
-        <div class="copyright">Copyright © Gipsoteca Vitali di Cento - Licenza CC-BY-SA</div>
-    </div>
-
-    <div class="controls">
-        <div class="map-selector">
-            <label>Mappa:</label>
-            <button class="map-btn active" data-map="osm">OpenStreetMap</button>
-        </div>
-        <div class="view-selector">
-            <button class="view-btn" data-view="gallery">📷 Galleria</button>
-            <button class="view-btn active" data-view="map">🗺️ Mappa</button>
-        </div>
-    </div>
-
-    <div class="container" id="view-container">
-        <div class="gallery-view" id="gallery-view">
-            <div class="photo-grid" id="photo-grid">
-                <div class="loading">Caricamento...</div>
+    <!-- Navbar Header -->
+    <nav class="navbar navbar-dark bg-dark sticky-top shadow-sm">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-camera-fill"></i> Foto di Guerrino Vitali
+            </span>
+            <div class="d-flex align-items-center text-light">
+                <span class="badge bg-primary me-2">
+                    <i class="bi bi-images"></i> <span id="total-photos">0</span> foto
+                </span>
+                <span class="badge bg-success">
+                    <i class="bi bi-geo-alt-fill"></i> <span id="gps-photos">0</span> GPS
+                </span>
             </div>
         </div>
+    </nav>
 
-        <div class="map-view active" id="map-view">
-            <div id="map"></div>
-        </div>
+    <!-- Controls Bar -->
+    <div class="bg-white border-bottom py-2 sticky-top" style="top: 56px; z-index: 1020;">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6 mb-2 mb-md-0">
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="viewMode" id="viewGallery" data-view="gallery">
+                        <label class="btn btn-outline-primary" for="viewGallery">
+                            <i class="bi bi-grid-3x3-gap-fill"></i> Galleria
+                        </label>
 
-    </div>
-
-    <!-- Lightbox -->
-    <div class="lightbox" id="lightbox">
-        <button class="lightbox-close" onclick="closeLightbox()">×</button>
-        <div class="lightbox-content">
-
-            <div class="lightbox-main">
-                <div class="lightbox-image-container">
-                    <div class="lightbox-loader" id="lightbox-loader"></div>
-                    <img id="lightbox-image" src="" alt="">
+                        <input type="radio" class="btn-check" name="viewMode" id="viewMap" data-view="map" checked>
+                        <label class="btn btn-outline-primary" for="viewMap">
+                            <i class="bi bi-map-fill"></i> Mappa
+                        </label>
+                    </div>
                 </div>
-                <div class="lightbox-map-container" id="lightbox-map-container">
-                    <button class="map-toggle-btn" id="map-toggle-btn" title="Toggle Map">🗺️</button>
-                    <div id="lightbox-map"></div>
-                </div>
-                <div id="zone-notification" class="zone-notification"></div>
-            </div>
-
-            <div class="lightbox-info">
-                <h3 id="lightbox-title"></h3>
-                <div class="lightbox-meta">
-                    <span id="lightbox-date"></span>
-                    <span id="lightbox-camera"></span>
-                    <span id="lightbox-gps"></span>
-                    <span id="lightbox-direction"></span>
+                <div class="col-md-6 text-md-end">
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="mapType" id="mapOsm" data-map="osm" checked>
+                        <label class="btn btn-outline-secondary btn-sm" for="mapOsm">
+                            <i class="bi bi-globe"></i> OpenStreetMap
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Main Content -->
+    <div class="container-fluid p-0" id="view-container" style="height: calc(100vh - 120px); overflow: hidden;">
+        <!-- Gallery View -->
+        <div class="gallery-view h-100" id="gallery-view" style="display: none; overflow-y: auto;">
+            <div class="container-fluid py-3">
+                <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-3" id="photo-grid">
+                    <div class="col">
+                        <div class="text-center text-muted py-5">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Caricamento...</span>
+                            </div>
+                            <p class="mt-2">Caricamento foto...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map View -->
+        <div class="map-view h-100 active" id="map-view">
+            <div id="map" style="height: 100%; width: 100%;"></div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Modal Lightbox -->
+    <div class="modal fade" id="lightbox" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content bg-dark">
+                <div class="modal-header bg-dark text-white border-0">
+                    <h5 class="modal-title" id="lightbox-title">Foto</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0 position-relative" style="height: calc(100vh - 150px);">
+                    <!-- Image Container -->
+                    <div class="lightbox-image-container h-100 d-flex align-items-center justify-content-center position-relative">
+                        <div class="spinner-border text-light position-absolute" id="lightbox-loader" style="display: none;">
+                            <span class="visually-hidden">Caricamento...</span>
+                        </div>
+                        <img id="lightbox-image" src="" alt="" class="img-fluid" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+
+                        <!-- Zone Notification -->
+                        <div id="zone-notification" class="position-absolute top-0 start-50 translate-middle-x mt-3">
+                            <div class="alert alert-info d-none" role="alert">
+                                <i class="bi bi-geo-alt-fill"></i> <span id="zone-text">Nuova Zona</span>
+                            </div>
+                        </div>
+
+                        <!-- Map Container Overlay -->
+                        <div class="lightbox-map-container position-absolute bottom-0 end-0 mb-3 me-3 bg-white rounded shadow" id="lightbox-map-container" style="width: 300px; height: 200px; z-index: 10;">
+                            <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-1 z-3" id="map-toggle-btn" title="Toggle Map">
+                                <i class="bi bi-map"></i>
+                            </button>
+                            <div id="lightbox-map" style="width: 100%; height: 100%; border-radius: 0.25rem;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-dark text-white border-0 justify-content-center">
+                    <div class="d-flex flex-wrap gap-3 justify-content-center align-items-center">
+                        <span id="lightbox-date" class="badge bg-secondary"><i class="bi bi-calendar"></i> --</span>
+                        <span id="lightbox-camera" class="badge bg-secondary"><i class="bi bi-camera"></i> --</span>
+                        <span id="lightbox-gps" class="badge bg-success"><i class="bi bi-geo-alt"></i> --</span>
+                        <span id="lightbox-direction" class="badge bg-info"><i class="bi bi-compass"></i> --</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="copyright">
+                <div class="container-fluid">
+                    <small>Copyright © Gipsoteca Vitali di Cento - Licenza CC-BY-SA</small>
+                </div>
+            </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- Custom JS -->
     <script src="app.js"></script>
 </body>
 
