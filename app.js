@@ -8,6 +8,13 @@ let markers = [];
 let markerClusterGroup = null;
 let currentLightboxIndex = -1;
 let lightboxModal = null; // Bootstrap Modal instance
+// Bootstrap Italia sprite path
+const BI_SPRITE = 'https://cdn.jsdelivr.net/npm/bootstrap-italia@2.17.4/dist/svg/sprites.svg';
+// Helper per icone SVG Bootstrap Italia
+function biIcon(name, extraClass = '') {
+const cls = extraClass ? `icon ${extraClass}` : 'icon icon-xs';
+return `<svg class="${cls}"><use href="${BI_SPRITE}#${name}"></use></svg>`;
+}
 // Tile layers
 const tileLayers = {
 osm: {
@@ -38,6 +45,13 @@ photosData = data.photos;
 updateStats(data);
 renderGallery();
 initMaps();
+// Restore state from URL hash on page load (permalink support)
+const hash = window.location.hash;
+if (/^#\d+$/.test(hash)) {
+openLightboxFromHash(hash);
+} else if (MAP_HASH_RE.test(hash)) {
+applyMapHash(hash);  // override the fitBounds from initMaps
+}
 } catch (error) {
 console.error('Errore caricamento foto:', error);
 }
@@ -58,7 +72,7 @@ if (photosToShow.length === 0) {
 grid.innerHTML = '<div class="col-12"><div class="alert alert-warning text-center">Nessuna foto con GPS trovata</div></div>';
 return;
 }
-const html = photosToShow.map((photo, index) => {
+const html = photosToShow.map((photo) => {
 const originalIndex = photosData.indexOf(photo);
 const filename = photo.display.split('/').pop();
 return `
@@ -68,10 +82,10 @@ return `
 <div class="card-body photo-card-body p-2">
 <h6 class="card-title photo-card-title mb-1" title="${filename}">${filename}</h6>
 <div class="photo-card-meta d-flex flex-wrap gap-1">
-${photo.date ? `<span class="badge bg-light text-dark"><i class="bi bi-calendar"></i> ${formatDate(photo.date)}</span>` : ''}
-<span class="badge bg-success"><i class="bi bi-geo-alt-fill"></i> GPS</span>
+${photo.date ? `<span class="badge bg-light text-dark">${biIcon('it-calendar')} ${formatDate(photo.date)}</span>` : ''}
+<span class="badge bg-success">${biIcon('it-pin', 'icon icon-xs icon-white')} GPS</span>
 ${photo.direction !== null && photo.direction !== undefined ?
-`<span class="badge bg-info"><i class="bi bi-compass"></i> ${Math.round(photo.direction)}°</span>` : ''}
+`<span class="badge bg-info">${biIcon('it-arrow-up', 'icon icon-xs icon-white')} ${Math.round(photo.direction)}°</span>` : ''}
 </div>
 </div>
 </div>
@@ -135,6 +149,12 @@ const leafletBounds = L.latLngBounds(
 );
 map.fitBounds(leafletBounds, { padding: [50, 50] });
 }
+// Map permalink: update URL hash on move/zoom (only when lightbox is closed)
+map.on('moveend', () => {
+if (currentLightboxIndex >= 0) return;
+const c = map.getCenter();
+history.replaceState(null, '', `#${c.lat.toFixed(6)},${c.lng.toFixed(6)},${map.getZoom()}z`);
+});
 }
 // Aggiorna tiles della mappa
 function updateMapTiles(mapInstance) {
@@ -170,14 +190,7 @@ spiderfyOnMaxZoom: true,
 showCoverageOnHover: false,
 zoomToBoundsOnClick: true
 });
-photosWithGPS.forEach((photo, index) => {
-const title = photo.date ? formatDate(photo.date) : 'Foto';
-const popupContent = `
-<div style="text-align:center">
-<img src="${photo.thumb}" style="width:100px;height:100px;object-fit:cover;border-radius:4px"><br>
-<strong>${title}</strong>
-</div>
-`;
+photosWithGPS.forEach((photo) => {
 const photoIndex = photosData.indexOf(photo);
 // Icona thumbnail
 const icon = L.divIcon({
@@ -246,6 +259,17 @@ lightboxModal = new bootstrap.Modal(lightboxElement, {
 keyboard: true,
 backdrop: 'static'
 });
+// After the modal animation completes, recalculate map size.
+// Needed on first open: invalidateSize() at 100ms fires while the
+// fade animation is still running (300ms), so Leaflet sees size=0.
+lightboxElement.addEventListener('shown.bs.modal', () => {
+if (mapLightbox) mapLightbox.invalidateSize();
+});
+// Restore map permalink when lightbox is fully closed (any dismissal method)
+lightboxElement.addEventListener('hidden.bs.modal', () => {
+currentLightboxIndex = -1;
+history.replaceState(null, '', mapHashCurrent() || (window.location.pathname + window.location.search));
+});
 }
 // Show modal
 lightboxModal.show();
@@ -255,6 +279,9 @@ const prevPhoto = photosData[prevIndex];
 checkZoneChange(prevPhoto, photo);
 }
 updateLightboxContent(photo);
+// Permalink: update URL hash with sequence number (#1, #2, ...)
+const gpsPhotos = photosData.filter(p => p.has_gps);
+history.replaceState(null, '', `#${gpsPhotos.indexOf(photo) + 1}`);
 }
 function updateLightboxContent(photo) {
 const imgElement = document.getElementById('lightbox-image');
@@ -276,32 +303,36 @@ imgElement.style.opacity = '1';
 }
 };
 newImg.src = photo.display;
-// Use filename as title
-const filename = photo.display.split('/').pop();
-document.getElementById('lightbox-title').textContent = filename;
-// Update metadata badges
+// Sequence counter in header
+const photosWithGPS = photosData.filter(p => p.has_gps);
+const seqIndex = photosWithGPS.indexOf(photo) + 1;
+document.getElementById('lightbox-sequence').textContent = `${seqIndex} / ${photosWithGPS.length}`;
+// Date as plain text in header
 const dateEl = document.getElementById('lightbox-date');
 if (photo.date) {
-dateEl.innerHTML = `<i class="bi bi-calendar"></i> ${formatDate(photo.date)}`;
+dateEl.textContent = formatDate(photo.date);
 dateEl.style.display = '';
 } else {
 dateEl.style.display = 'none';
 }
-const cameraEl = document.getElementById('lightbox-camera');
-if (photo.camera) {
-cameraEl.innerHTML = `<i class="bi bi-camera"></i> ${photo.camera}`;
-cameraEl.style.display = '';
-} else {
-cameraEl.style.display = 'none';
-}
+// GPS coordinates (footer)
 const gpsEl = document.getElementById('lightbox-gps');
-gpsEl.innerHTML = `<i class="bi bi-geo-alt"></i> ${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}`;
+gpsEl.innerHTML = `${biIcon('it-pin', 'icon icon-xs icon-white')} ${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}`;
+// Direction (footer)
 const directionEl = document.getElementById('lightbox-direction');
 if (photo.direction !== null && photo.direction !== undefined) {
-directionEl.innerHTML = `<i class="bi bi-compass"></i> ${Math.round(photo.direction)}°`;
+directionEl.innerHTML = `${biIcon('it-arrow-up', 'icon icon-xs icon-white')} ${Math.round(photo.direction)}°`;
 directionEl.style.display = '';
 } else {
 directionEl.style.display = 'none';
+}
+// Camera (footer)
+const cameraEl = document.getElementById('lightbox-camera');
+if (photo.camera) {
+cameraEl.innerHTML = `${biIcon('it-camera', 'icon icon-xs icon-white')} ${photo.camera}`;
+cameraEl.style.display = '';
+} else {
+cameraEl.style.display = 'none';
 }
 // Aggiorna mappa lightbox
 updateLightboxMap(photo);
@@ -336,10 +367,9 @@ mapLightbox.removeLayer(layer);
 });
 // Mostra tutti i marker
 const photosWithGPS = photosData.filter(p => p.has_gps && p.lat && p.lon);
-photosWithGPS.forEach((p, i) => {
+photosWithGPS.forEach((p) => {
 const isCurrentPhoto = p === photo;
 const pIndex = photosData.indexOf(p);
-const pFilename = p.display.split('/').pop();
 if (isCurrentPhoto) {
 // Marker corrente rosso semplice
 if (p.direction !== null && p.direction !== undefined) {
@@ -405,6 +435,45 @@ const nextPhoto = photosWithGPS[currentGPSIndex];
 const nextIndex = photosData.indexOf(nextPhoto);
 openLightbox(nextIndex);
 }
+// Permalink helper: open lightbox from a sequence number string
+function openLightboxFromHash(hash) {
+if (!hash || !/^#\d+$/.test(hash)) return false;
+const seqNum = parseInt(hash.slice(1));
+const photosWithGPS = photosData.filter(p => p.has_gps);
+if (seqNum >= 1 && seqNum <= photosWithGPS.length) {
+openLightbox(photosData.indexOf(photosWithGPS[seqNum - 1]));
+return true;
+}
+return false;
+}
+// Regex for map permalink hash: #lat,lon,zoomz  e.g. #45.123456,9.654321,14z
+const MAP_HASH_RE = /^#(-?\d+\.?\d*),(-?\d+\.?\d*),(\d+)z$/;
+function applyMapHash(hash) {
+const m = hash.match(MAP_HASH_RE);
+if (m && map) {
+map.setView([parseFloat(m[1]), parseFloat(m[2])], parseInt(m[3]));
+return true;
+}
+return false;
+}
+function mapHashCurrent() {
+if (!map) return '';
+const c = map.getCenter();
+return `#${c.lat.toFixed(6)},${c.lng.toFixed(6)},${map.getZoom()}z`;
+}
+// hashchange fires when user edits the URL hash in-page (no reload).
+// Note: history.replaceState (used in openLightbox/closeLightbox) does NOT trigger this.
+window.addEventListener('hashchange', () => {
+const hash = window.location.hash;
+if (/^#\d+$/.test(hash)) {
+openLightboxFromHash(hash);
+} else if (MAP_HASH_RE.test(hash)) {
+closeLightbox();
+applyMapHash(hash);
+} else {
+closeLightbox();
+}
+});
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
 loadPhotos();
@@ -427,7 +496,9 @@ const mapToggleBtn = document.getElementById('map-toggle-btn');
 function toggleMap(e) {
 if (e) e.stopPropagation();
 const isMinimized = mapContainer.classList.toggle('minimized');
-mapToggleBtn.textContent = isMinimized ? '🗺️' : '↘️';
+mapToggleBtn.innerHTML = isMinimized
+? biIcon('it-map-marker', 'icon icon-sm')
+: biIcon('it-minimize', 'icon icon-sm');
 if (!isMinimized) {
 setTimeout(() => {
 if (mapLightbox) mapLightbox.invalidateSize();
