@@ -7,7 +7,7 @@ let mapLightbox = null;
 let markers = [];
 let markerClusterGroup = null;
 let currentLightboxIndex = -1;
-let lightboxModal = null; // Bootstrap Modal instance
+let previousView = 'map'; // View to return to when closing photo view
 // Bootstrap Italia sprite path
 const BI_SPRITE = 'https://cdn.jsdelivr.net/npm/bootstrap-italia@2.17.4/dist/svg/sprites.svg';
 // Helper per icone SVG Bootstrap Italia
@@ -47,7 +47,7 @@ renderGallery();
 initMaps();
 // Restore state from URL hash on page load (permalink support)
 const hash = window.location.hash;
-if (/^#\d+$/.test(hash)) {
+if (PHOTO_HASH_RE.test(hash)) {
 openLightboxFromHash(hash);
 } else if (MAP_HASH_RE.test(hash)) {
 applyMapHash(hash);  // override the fitBounds from initMaps
@@ -149,9 +149,9 @@ const leafletBounds = L.latLngBounds(
 );
 map.fitBounds(leafletBounds, { padding: [50, 50] });
 }
-// Map permalink: update URL hash on move/zoom (only when lightbox is closed)
+// Map permalink: update URL hash on move/zoom (only when map view is active)
 map.on('moveend', () => {
-if (currentLightboxIndex >= 0) return;
+if (currentView !== 'map') return;
 const c = map.getCenter();
 history.replaceState(null, '', `#${c.lat.toFixed(6)},${c.lng.toFixed(6)},${map.getZoom()}z`);
 });
@@ -219,21 +219,28 @@ map.addLayer(markerClusterGroup);
 const bounds = L.latLngBounds(photosWithGPS.map(p => [p.lat, p.lon]));
 map.fitBounds(bounds, { padding: [50, 50] });
 }
-// Cambia vista (Bootstrap compatible)
+// Cambia vista
 function switchView(view) {
 currentView = view;
-// Hide both views
 document.getElementById('gallery-view').style.display = 'none';
 document.getElementById('map-view').style.display = 'none';
-// Show selected view
+document.getElementById('photo-view').style.display = 'none';
+const btnGallery = document.getElementById('viewGallery');
+const btnMap = document.getElementById('viewMap');
 if (view === 'gallery') {
 document.getElementById('gallery-view').style.display = 'block';
-} else {
+btnGallery.checked = true;
+btnMap.checked = false;
+} else if (view === 'map') {
 document.getElementById('map-view').style.display = 'block';
-// Ridimensiona mappa se necessario
-setTimeout(() => {
-if (map) map.invalidateSize();
-}, 100);
+btnGallery.checked = false;
+btnMap.checked = true;
+setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+} else if (view === 'photo') {
+document.getElementById('photo-view').style.display = 'flex';
+btnGallery.checked = false;
+btnMap.checked = false;
+setTimeout(() => { if (mapLightbox) mapLightbox.invalidateSize(); }, 50);
 }
 }
 // Cambia tipo mappa
@@ -242,46 +249,26 @@ currentMapType = type;
 updateMapTiles(map);
 if (mapLightbox) updateMapTiles(mapLightbox);
 }
-// Lightbox (Bootstrap Modal)
+// Apre la foto nella photo view (pagina dedicata, non modal)
 function openLightbox(index) {
 const prevIndex = currentLightboxIndex;
 currentLightboxIndex = index;
 const photo = photosData[index];
-// Salta foto senza GPS
-if (!photo.has_gps) {
-console.log('Foto senza GPS, skip');
-return;
+if (!photo.has_gps) return;
+// Ricorda da dove siamo venuti per il tasto ✕
+if (currentView !== 'photo') {
+previousView = currentView;
 }
-// Initialize Bootstrap modal if not already
-if (!lightboxModal) {
-const lightboxElement = document.getElementById('lightbox');
-lightboxModal = new bootstrap.Modal(lightboxElement, {
-keyboard: true,
-backdrop: 'static'
-});
-// After the modal animation completes, recalculate map size.
-// Needed on first open: invalidateSize() at 100ms fires while the
-// fade animation is still running (300ms), so Leaflet sees size=0.
-lightboxElement.addEventListener('shown.bs.modal', () => {
-if (mapLightbox) mapLightbox.invalidateSize();
-});
-// Restore map permalink when lightbox is fully closed (any dismissal method)
-lightboxElement.addEventListener('hidden.bs.modal', () => {
-currentLightboxIndex = -1;
-history.replaceState(null, '', mapHashCurrent() || (window.location.pathname + window.location.search));
-});
-}
-// Show modal
-lightboxModal.show();
+// Mostra la photo view
+switchView('photo');
 // Controlla cambia zona
 if (prevIndex >= 0) {
-const prevPhoto = photosData[prevIndex];
-checkZoneChange(prevPhoto, photo);
+checkZoneChange(photosData[prevIndex], photo);
 }
 updateLightboxContent(photo);
-// Permalink: update URL hash with sequence number (#1, #2, ...)
-const gpsPhotos = photosData.filter(p => p.has_gps);
-history.replaceState(null, '', `#${gpsPhotos.indexOf(photo) + 1}`);
+// Permalink: use file hash from filename (stable across photo additions)
+const fileHash = photo.display.split('/').pop().split('.')[0];
+history.replaceState(null, '', `#${fileHash}`);
 }
 function updateLightboxContent(photo) {
 const imgElement = document.getElementById('lightbox-image');
@@ -410,12 +397,9 @@ mapLightbox.setView([photo.lat, photo.lon], 18);
 }, 100);
 }
 function closeLightbox() {
-if (lightboxModal) {
-lightboxModal.hide();
-}
-if (map) {
-map.closePopup();
-}
+currentLightboxIndex = -1;
+switchView(previousView);
+history.replaceState(null, '', mapHashCurrent() || (window.location.pathname + window.location.search));
 }
 function navigateLightbox(direction) {
 const photosWithGPS = photosData.filter(p => p.has_gps);
@@ -435,13 +419,17 @@ const nextPhoto = photosWithGPS[currentGPSIndex];
 const nextIndex = photosData.indexOf(nextPhoto);
 openLightbox(nextIndex);
 }
-// Permalink helper: open lightbox from a sequence number string
+// Permalink helper: open lightbox from a file hash string (e.g. #5d1c7f1ef4a17046)
+const PHOTO_HASH_RE = /^#[0-9a-f]{10,}$/i;
 function openLightboxFromHash(hash) {
-if (!hash || !/^#\d+$/.test(hash)) return false;
-const seqNum = parseInt(hash.slice(1));
-const photosWithGPS = photosData.filter(p => p.has_gps);
-if (seqNum >= 1 && seqNum <= photosWithGPS.length) {
-openLightbox(photosData.indexOf(photosWithGPS[seqNum - 1]));
+if (!hash || !PHOTO_HASH_RE.test(hash)) return false;
+const fileHash = hash.slice(1);
+const index = photosData.findIndex(p => {
+const h = p.display.split('/').pop().split('.')[0];
+return h === fileHash;
+});
+if (index >= 0) {
+openLightbox(index);
 return true;
 }
 return false;
@@ -465,7 +453,7 @@ return `#${c.lat.toFixed(6)},${c.lng.toFixed(6)},${map.getZoom()}z`;
 // Note: history.replaceState (used in openLightbox/closeLightbox) does NOT trigger this.
 window.addEventListener('hashchange', () => {
 const hash = window.location.hash;
-if (/^#\d+$/.test(hash)) {
+if (PHOTO_HASH_RE.test(hash)) {
 openLightboxFromHash(hash);
 } else if (MAP_HASH_RE.test(hash)) {
 closeLightbox();
@@ -476,6 +464,7 @@ closeLightbox();
 });
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
+switchView('map'); // set initial state explicitly
 loadPhotos();
 // View buttons (Bootstrap radio buttons)
 document.getElementById('viewGallery').addEventListener('change', (e) => {
@@ -514,13 +503,11 @@ toggleMap(e);
 });
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
-const lightboxElement = document.getElementById('lightbox');
-const isLightboxOpen = lightboxElement.classList.contains('show');
-if (isLightboxOpen) {
+if (currentView === 'photo') {
 if (e.key === 'Escape') closeLightbox();
 if (e.key === 'ArrowLeft') navigateLightbox(-1);
 if (e.key === 'ArrowRight') navigateLightbox(1);
-if (e.key === 'm' || e.key === 'M') toggleMap(); // Shortcut for map
+if (e.key === 'm' || e.key === 'M') toggleMap();
 }
 });
 // Mobile Zoom & Swipe Support
