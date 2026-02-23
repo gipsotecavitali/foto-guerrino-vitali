@@ -1,5 +1,7 @@
 // Variabili globali
 let photosData = [];
+let lkhOrder = [];        // Ordine LKH ottimale (da lkh_tour.json), se disponibile
+let useLKHNav = false;    // true = navigazione sinistra/destra segue ordine LKH
 let currentView = 'map';  // Default: mappa
 let currentMapType = 'osm';
 let map = null;
@@ -52,6 +54,21 @@ openLightboxFromHash(hash);
 } else if (MAP_HASH_RE.test(hash)) {
 applyMapHash(hash);  // override the fitBounds from initMaps
 }
+// Try to load LKH precomputed tour (non-blocking)
+try {
+const lkhRes = await fetch('data/lkh_tour.json');
+if (lkhRes.ok) {
+const lkhData = await lkhRes.json();
+const byIdx = new Map(photosData.map((p, i) => [i, p]));
+lkhOrder = (lkhData.tour_indices || [])
+.map(i => byIdx.get(i))
+.filter(p => p && p.has_gps);
+if (lkhOrder.length > 0) {
+useLKHNav = true;  // silently use LKH order always
+console.info(`LKH nav active: ${lkhOrder.length} photos, ${(lkhData.length_m / 1000).toFixed(2)} km`);
+}
+}
+} catch (_) {  }
 } catch (error) {
 console.error('Errore caricamento foto:', error);
 }
@@ -402,20 +419,16 @@ switchView(previousView);
 history.replaceState(null, '', mapHashCurrent() || (window.location.pathname + window.location.search));
 }
 function navigateLightbox(direction) {
-const photosWithGPS = photosData.filter(p => p.has_gps);
-if (photosWithGPS.length === 0) return;
-// Nota: currentLightboxIndex è l'indice nell'array globale photosData
-// Dobbiamo trovarlo in photosWithGPS
+// Choose the ordered sequence depending on the active navigation mode
+const navOrder = (useLKHNav && lkhOrder.length > 0)
+? lkhOrder
+: photosData.filter(p => p.has_gps);
+if (navOrder.length === 0) return;
 const currentPhoto = photosData[currentLightboxIndex];
-let currentGPSIndex = photosWithGPS.indexOf(currentPhoto);
-if (currentGPSIndex === -1) {
-// Fallback
-currentGPSIndex = 0;
-}
-currentGPSIndex += direction;
-if (currentGPSIndex < 0) currentGPSIndex = photosWithGPS.length - 1;
-if (currentGPSIndex >= photosWithGPS.length) currentGPSIndex = 0;
-const nextPhoto = photosWithGPS[currentGPSIndex];
+let idx = navOrder.indexOf(currentPhoto);
+if (idx === -1) idx = 0;
+idx = (idx + direction + navOrder.length) % navOrder.length;
+const nextPhoto = navOrder[idx];
 const nextIndex = photosData.indexOf(nextPhoto);
 openLightbox(nextIndex);
 }
