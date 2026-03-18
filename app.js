@@ -17,6 +17,11 @@ function biIcon(name, extraClass = '') {
 const cls = extraClass ? `icon ${extraClass}` : 'icon icon-xs';
 return `<svg class="${cls}"><use href="${BI_SPRITE}#${name}"></use></svg>`;
 }
+function mapToggleButtonContent(isMinimized) {
+return isMinimized
+? '<span class="map-toggle-symbol map-toggle-plus" aria-hidden="true"></span>'
+: '<span class="map-toggle-symbol map-toggle-minus" aria-hidden="true"></span>';
+}
 // Tile layers
 const tileLayers = {
 osm: {
@@ -154,7 +159,9 @@ initialView = [centerLat, centerLon];
 map = L.map('map').setView(initialView, initialZoom);
 updateMapTiles(map);
 // Mappa lightbox
-mapLightbox = L.map('lightbox-map').setView(initialView, 15);
+mapLightbox = L.map('lightbox-map', {
+zoomControl: false
+}).setView(initialView, 15);
 updateMapTiles(mapLightbox);
 // Aggiungi marker
 updateMapMarkers();
@@ -284,7 +291,7 @@ const mapContainer = document.getElementById('lightbox-map-container');
 const mapToggleBtn = document.getElementById('map-toggle-btn');
 if (mapContainer && !mapContainer.classList.contains('minimized')) {
 mapContainer.classList.add('minimized');
-mapToggleBtn.innerHTML = biIcon('it-map-marker', 'icon icon-sm');
+mapToggleBtn.innerHTML = mapToggleButtonContent(true);
 }
 }
 // Controlla cambia zona
@@ -504,12 +511,15 @@ if (e.target.checked) switchMapType(e.target.dataset.map);
 // Map toggle
 const mapContainer = document.getElementById('lightbox-map-container');
 const mapToggleBtn = document.getElementById('map-toggle-btn');
+mapToggleBtn.innerHTML = mapToggleButtonContent(false);
+mapToggleBtn.setAttribute('aria-label', 'Chiudi mappa');
+mapToggleBtn.setAttribute('title', 'Chiudi mappa');
 function toggleMap(e) {
 if (e) e.stopPropagation();
 const isMinimized = mapContainer.classList.toggle('minimized');
-mapToggleBtn.innerHTML = isMinimized
-? biIcon('it-map-marker', 'icon icon-sm')
-: biIcon('it-minimize', 'icon icon-sm');
+mapToggleBtn.innerHTML = mapToggleButtonContent(isMinimized);
+mapToggleBtn.setAttribute('aria-label', isMinimized ? 'Apri mappa' : 'Chiudi mappa');
+mapToggleBtn.setAttribute('title', isMinimized ? 'Apri mappa' : 'Chiudi mappa');
 if (!isMinimized) {
 setTimeout(() => {
 if (mapLightbox) mapLightbox.invalidateSize();
@@ -526,7 +536,9 @@ toggleMap(e);
 // Auto-minimize on mobile
 if (window.innerWidth <= 768) {
 mapContainer.classList.add('minimized');
-mapToggleBtn.innerHTML = biIcon('it-map-marker', 'icon icon-sm');
+mapToggleBtn.innerHTML = mapToggleButtonContent(true);
+mapToggleBtn.setAttribute('aria-label', 'Apri mappa');
+mapToggleBtn.setAttribute('title', 'Apri mappa');
 }
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
