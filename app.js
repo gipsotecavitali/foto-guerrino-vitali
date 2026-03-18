@@ -278,6 +278,15 @@ previousView = currentView;
 }
 // Mostra la photo view
 switchView('photo');
+// Re-minimize map on mobile when opening a new photo
+if (window.innerWidth <= 768) {
+const mapContainer = document.getElementById('lightbox-map-container');
+const mapToggleBtn = document.getElementById('map-toggle-btn');
+if (mapContainer && !mapContainer.classList.contains('minimized')) {
+mapContainer.classList.add('minimized');
+mapToggleBtn.innerHTML = biIcon('it-map-marker', 'icon icon-sm');
+}
+}
 // Controlla cambia zona
 if (prevIndex >= 0) {
 checkZoneChange(photosData[prevIndex], photo);
@@ -514,6 +523,11 @@ if (mapContainer.classList.contains('minimized')) {
 toggleMap(e);
 }
 });
+// Auto-minimize on mobile
+if (window.innerWidth <= 768) {
+mapContainer.classList.add('minimized');
+mapToggleBtn.innerHTML = biIcon('it-map-marker', 'icon icon-sm');
+}
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
 if (currentView === 'photo') {
