@@ -97,6 +97,17 @@
             border-color: #14b8a6;
         }
 
+        .tbtn.on-raw {
+            background: #c2410c;
+            color: #fff;
+            border-color: #f97316;
+        }
+
+        .tbtn:disabled {
+            opacity: .35;
+            cursor: default;
+        }
+
         label {
             font-size: 11px;
             color: #64748b;
@@ -264,6 +275,8 @@
             <button class="tbtn on" id="btn-direction" onclick="toggle('direction')">Direzione</button>
             <button class="tbtn" id="btn-thumbs" onclick="toggle('thumbs')">Thumbnails</button>
             <button class="tbtn" id="btn-labels" onclick="toggle('labels')">Numeri</button>
+            <button class="tbtn" id="btn-raw-gps" onclick="toggle('rawgps')" disabled
+                title="Richiede lat_raw in photos.json (rigenera con make.sh)">GPS originale</button>
         </div>
 
         <span class="sep">|</span>
@@ -332,9 +345,11 @@
         let showDirection = true;
         let showThumbs = false;
         let showLabels = false;
+        let showRawGps = false;
+        let photosWithRaw = [];
 
         let map = null;
-        let lgEdge = null, lgNode = null, lgDir = null, lgThumb = null, lgLabel = null;
+        let lgEdge = null, lgNode = null, lgDir = null, lgThumb = null, lgLabel = null, lgRaw = null;
 
         // ── Haversine (metres) ─────────────────────────────────────────────────
         function haversine(a, b) {
@@ -503,6 +518,7 @@
             lgDir = L.layerGroup().addTo(map);
             lgThumb = L.layerGroup();
             lgLabel = L.layerGroup();
+            lgRaw = L.layerGroup();
         }
 
         // ── Load data ─────────────────────────────────────────────────────────
@@ -513,6 +529,16 @@
                 const data = await res.json();
 
                 allPhotos = (data.photos || []).filter(p => p.has_gps && p.lat && p.lon);
+                photosWithRaw = allPhotos.filter(p => p.lat_raw != null && p.lon_raw != null);
+                const rawBtn = document.getElementById('btn-raw-gps');
+                if (photosWithRaw.length > 0) {
+                    rawBtn.disabled = false;
+                    rawBtn.title = `${photosWithRaw.length} foto con correzione SfM — cerchi arancioni = GPS EXIF`;
+                } else {
+                    rawBtn.disabled = true;
+                    showRawGps = false;
+                    rawBtn.classList.remove('on-raw');
+                }
                 orderedJson = [...allPhotos];
                 orderedNN = computeNearestNeighbor(allPhotos);
                 orderedNN2opt = twoOpt(orderedNN);
@@ -635,6 +661,7 @@
 
             lgEdge.clearLayers(); lgNode.clearLayers();
             lgDir.clearLayers(); lgThumb.clearLayers(); lgLabel.clearLayers();
+            lgRaw.clearLayers();
 
             const isNNG = graphMode === 'nng';
 
@@ -722,7 +749,6 @@
                     Cluster: <b>${p.cluster_id ?? '–'}</b><br>
                     ${isNNG ? `In-degree: <b>${inDeg}</b>${isHub ? ' 🌟 hub' : ''}${isMutual ? ' ↔ mutual' : ''}` : ''}<br>
                     lat: ${p.lat?.toFixed(6)}, lon: ${p.lon?.toFixed(6)}<br>
-                    ${p.date_taken ? 'Data: ' + p.date_taken : ''}
                     ${img}
                 </div>`;
                 }).addTo(lgNode);
@@ -747,6 +773,42 @@
                     }).addTo(lgLabel);
             });
 
+            // ── GPS originale (pre-correzione SfM) ──
+            if (showRawGps && photosWithRaw.length > 0) {
+                photosWithRaw.forEach(p => {
+                    const shift = haversine(
+                        { lat: p.lat_raw, lon: p.lon_raw },
+                        { lat: p.lat, lon: p.lon }
+                    );
+                    L.polyline(
+                        [[p.lat_raw, p.lon_raw], [p.lat, p.lon]],
+                        { color: '#f97316', weight: 1.2, opacity: 0.55, dashArray: '4 4' }
+                    ).bindTooltip(`shift ${shift >= 1000 ? (shift / 1000).toFixed(2) + ' km' : Math.round(shift) + ' m'}`, { sticky: true })
+                        .addTo(lgRaw);
+
+                    L.circleMarker([p.lat_raw, p.lon_raw], {
+                        radius: Math.max(4, nodeR - 1),
+                        fillColor: '#0d0d1a',
+                        color: '#f97316',
+                        weight: 2,
+                        fillOpacity: 0.65,
+                        opacity: 0.95
+                    }).bindPopup(() => {
+                        const img = p.thumbnail ? `<img src="${p.thumbnail}" style="max-width:180px;max-height:120px;border-radius:6px;margin-top:6px;">` : '';
+                        return `<div style="font-size:12px;line-height:1.6">
+                        <b>GPS originale (EXIF)</b><br>
+                        lat: ${p.lat_raw?.toFixed(6)}, lon: ${p.lon_raw?.toFixed(6)}<br>
+                        Corretto: ${p.lat?.toFixed(6)}, ${p.lon?.toFixed(6)}<br>
+                        Shift: <b>${shift >= 1000 ? (shift / 1000).toFixed(2) + ' km' : Math.round(shift) + ' m'}</b><br>
+                        ${img}
+                    </div>`;
+                    }).addTo(lgRaw);
+                });
+                if (!map.hasLayer(lgRaw)) lgRaw.addTo(map);
+            } else if (map.hasLayer(lgRaw)) {
+                map.removeLayer(lgRaw);
+            }
+
             // Add optional layers to map
             if (showThumbs && !map.hasLayer(lgThumb)) lgThumb.addTo(map);
             if (!showThumbs && map.hasLayer(lgThumb)) map.removeLayer(lgThumb);
@@ -770,6 +832,11 @@
             if (what === 'direction') { showDirection = !showDirection; document.getElementById('btn-direction').classList.toggle('on', showDirection); }
             if (what === 'thumbs') { showThumbs = !showThumbs; document.getElementById('btn-thumbs').classList.toggle('on', showThumbs); }
             if (what === 'labels') { showLabels = !showLabels; document.getElementById('btn-labels').classList.toggle('on', showLabels); }
+            if (what === 'rawgps') {
+                showRawGps = !showRawGps;
+                const btn = document.getElementById('btn-raw-gps');
+                btn.classList.toggle('on-raw', showRawGps);
+            }
             redraw();
         }
 
